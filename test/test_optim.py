@@ -387,7 +387,7 @@ class TestOptim(TestCase):
 
                 optimizer = opt(model.parameters(), **flag_params[index])
 
-                for _ in range(kIterations): 
+                for i in range(5): 
                     optimizer.zero_grad()
                     output = model(input)
                     loss = output.sum()
