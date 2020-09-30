@@ -385,7 +385,7 @@ class TestOptim(TestCase):
                 pretrained_dict['2.bias'] = bias2
                 model.load_state_dict(pretrained_dict)
 
-                optimizer = opt(model.parameters(), lr=1.0)
+                optimizer = opt(model.parameters(), **flag_params[index])
 
                 for _ in range(kIterations): 
                     optimizer.zero_grad()
