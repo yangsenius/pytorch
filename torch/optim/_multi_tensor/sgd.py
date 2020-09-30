@@ -103,14 +103,19 @@ class SGD(Optimizer):
 
             for p in group['params']:
                 if p.grad is not None:
+                    d_p = p.grad
+
                     if 'momentum_buffer' in self.state[p]: 
-                        grads_mb.append(p.grad)
+                        grads_mb.append(d_p)
                         params_with_grad_mb.append(p)
                         bufs_mb.append(self.state[p]['momentum_buffer'])
                     else: 
-                        grads_no_mb.append(p.grad)
+                        if weight_decay != 0:
+                            d_p = d_p.add(p, alpha=weight_decay)
+
+                        grads_no_mb.append(d_p)
                         params_with_grad_no_mb.append(p)
-                        self.state[p]['momentum_buffer'] = torch.clone(p.grad).detach()
+                        self.state[p]['momentum_buffer'] = torch.clone(d_p).detach()
                         bufs_no_mb.append(self.state[p]['momentum_buffer'])
 
                     if p.grad.is_sparse:
@@ -118,16 +123,12 @@ class SGD(Optimizer):
 
                         if momentum != 0: 
                             raise RuntimeError('SGD does not support momentum for sparse gradients')
+            
+            if weight_decay != 0 and grads_mb != []:
+                grads_mb = torch._foreach_add(grads_mb, params_with_grad_mb, alpha=weight_decay)
 
             if grads_mb == [] and grads_no_mb == []:
                 return loss
-
-            if weight_decay != 0:
-                if grads_mb != []:
-                    grads_mb = torch._foreach_add(grads_mb, params_with_grad_mb, alpha=weight_decay)
-
-                if grads_no_mb != []:
-                    grads_no_mb = torch._foreach_add(grads_no_mb, params_with_grad_no_mb, alpha=weight_decay)
 
             if momentum != 0 and grads_mb != []:
                 torch._foreach_mul_(bufs_mb, momentum)
