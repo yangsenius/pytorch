@@ -123,7 +123,7 @@ class SGD(Optimizer):
 
                         if momentum != 0: 
                             raise RuntimeError('SGD does not support momentum for sparse gradients')
-            
+
             if weight_decay != 0 and grads_mb != []:
                 grads_mb = torch._foreach_add(grads_mb, params_with_grad_mb, alpha=weight_decay)
 
