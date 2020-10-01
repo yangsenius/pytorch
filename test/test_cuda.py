@@ -2379,8 +2379,13 @@ t2.start()
         if add_kwargs is None:
             add_kwargs = {}
 
+        print(f"HEY _run_autocast_outofplace op {op} 0", file=sys.stderr)
         self.assertFalse(torch.is_autocast_enabled())
+
+        print(f"HEY _run_autocast_outofplace op {op} 1", file=sys.stderr)
         with torch.cuda.amp.autocast():
+
+            print(f"HEY _run_autocast_outofplace op {op} 2", file=sys.stderr)
             self.assertTrue(torch.is_autocast_enabled())
 
             out_type = out_type if out_type is not None else run_as_type
@@ -2388,7 +2393,11 @@ t2.start()
 
             # Try module.* variant, if requested:
             if module is not None and hasattr(module, op):
+
+                print(f"HEY module {module}", file=sys.stderr)
                 output = getattr(module, op)(*args, **add_kwargs)
+
+                print(f"HEY done module {module}", file=sys.stderr)
                 if isinstance(output, torch.Tensor):
                     self.assertTrue(out_type == output.dtype,
                                     "autocast for torch.{} produced {}, should produce {}"
@@ -2396,7 +2405,11 @@ t2.start()
 
             # Try Tensor.* variant:
             if hasattr(torch.Tensor, op):
+
+                print(f"HEY Tensor", file=sys.stderr)
                 output_method = getattr(args[0], op)(*args[1:], **add_kwargs)
+
+                print(f"HEY done Tensor", file=sys.stderr)
                 if isinstance(output_method, torch.Tensor):
                     self.assertTrue(out_type == output_method.dtype,
                                     "autocast for torch.{} produced {}, should produce torch.{}"
@@ -2429,14 +2442,19 @@ t2.start()
                 self.assertFalse(torch.is_autocast_enabled())
 
                 if module is not None and hasattr(module, op):
+                    print(f"HEY control module", file=sys.stderr)
                     control = getattr(module, op)(*cast(args, run_as_type), **add_kwargs)
+                    print(f"HEY done control module", file=sys.stderr)
                 else:
+                    print(f"HEY control Tensor", file=sys.stderr)
                     control = getattr(args[0].to(run_as_type), op)(*cast(args[1:], run_as_type), **add_kwargs)
+                    print(f"HEY done control Tensor", file=sys.stderr)
                 self.assertTrue(type(output_to_compare) == type(control))
                 comparison = compare(output_to_compare, control)
                 self.assertTrue(comparison, "torch.{} result did not match control".format(op))
             self.assertTrue(torch.is_autocast_enabled())
         self.assertFalse(torch.is_autocast_enabled())
+        print(f"HEY _run_autocast_outofplace done op {op}", file=sys.stderr)
 
     def args_maybe_kwargs(self, op_with_args):
         if len(op_with_args) == 2:
@@ -2446,9 +2464,11 @@ t2.start()
 
     @unittest.skipIf(not TEST_CUDNN, 'CUDNN not available')
     def test_autocast_torch_fp16(self):
+        print(f"HEY test_autocast_torch_fp16 0", file=sys.stderr)
         with torch.backends.cudnn.flags(enabled=True, deterministic=True):
             for op_with_args in self.autocast_lists.torch_fp16:
                 skip_test = False
+                print(f"HEY test_autocast_torch_fp16 op_with_args {op_with_args}", file=sys.stderr)
                 op, args = op_with_args[0], op_with_args[1]
                 if len(op_with_args) == 3:
                     skip_test = op_with_args[2]  # TEST_WITH_ROCM
