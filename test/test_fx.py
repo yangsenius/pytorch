@@ -9,7 +9,7 @@ from torch.fx import symbolic_trace, Proxy, Node, GraphModule, Tracer, Graph
 from torch.fx.experimental import GraphManipulation
 from torch.fx.experimental import shape_prop
 from torch.fx.experimental.Partitioner import DAG, Partitioner
-from torch.fx.experimental.subgraph_creation_example import split_module 
+from torch.fx.experimental.subgraph_creation_example import split_module
 
 from torch.fx.proxy import TraceError
 
@@ -577,7 +577,7 @@ class TestFX(JitTestCase):
                 return self.sa(*x)
 
         ul = UnpacksList()
-        with self.assertRaisesRegex(TraceError, 'Proxy object cannot be unpacked as function argument'):
+        with self.assertRaisesRegex(TraceError, 'Proxy object cannot be iterated.'):
             symbolic_trace(ul)
 
     def test_unpack_dict_better_error(self):
@@ -594,7 +594,7 @@ class TestFX(JitTestCase):
                 return self.sk(**x)
 
         ud = UnpacksDict()
-        with self.assertRaisesRegex(TraceError, 'Proxy object cannot be unpacked as function argument'):
+        with self.assertRaisesRegex(TraceError, 'Proxy object cannot be iterated.'):
             symbolic_trace(ud)
 
     def test_torch_custom_ops(self):
@@ -803,8 +803,8 @@ class TestFX(JitTestCase):
                 self.linear = torch.nn.Linear(4, 5)
 
             def forward(self, x, y):
-                z = self.linear(x + self.param).clamp(min=0.0, max=1.0) 
-                w = self.linear(y).clamp(min=0.0, max=1.0) 
+                z = self.linear(x + self.param).clamp(min=0.0, max=1.0)
+                w = self.linear(y).clamp(min=0.0, max=1.0)
                 return z + w
 
         # symbolically trace model
@@ -821,7 +821,7 @@ class TestFX(JitTestCase):
             partition_counter = (partition_counter + 1) % NPARTITIONS
             return partition
 
-        # split module in module with submodules 
+        # split module in module with submodules
         module_with_submodules = split_module(my_module_traced, my_module, mod_partition)
 
         x = torch.rand(3, 4)
@@ -831,6 +831,73 @@ class TestFX(JitTestCase):
         submodules_out = module_with_submodules(x, y)
 
         self.assertEqual(orig_out, submodules_out)
+
+    def test_iterable_inputs(self):
+        def apply_shape(shape, obj):
+            if isinstance(shape, dict):
+                return {k: obj[k] for k, v in shape.items()}
+            if isinstance(shape, list):
+                return [obj[i] for i, _ in enumerate(shape)]
+
+        class Custom(Tracer):
+            def __init__(self, input_shape):
+                self.input_shape = input_shape
+                super().__init__()
+
+            def iter(self, obj: 'Proxy') -> iter:
+                if obj.node.op == 'placeholder' and obj.node.target in self.input_shape:
+                    shape = self.input_shape[obj.node.target]
+                    return iter(apply_shape(shape, obj))
+                return super().iter(obj)
+
+            def keys(self, obj: 'Proxy'):
+                if obj.node.op == 'placeholder' and obj.node.target in self.input_shape:
+                    shape = self.input_shape[obj.node.target]
+                    return shape.keys()
+                return super().keys(obj)
+
+        class Model(torch.nn.Module):
+            def what(self, c, a, b):
+                return c * a + b
+
+            def forward(self, *args, **kwargs):
+                return self.what(*args, **kwargs)
+
+        m = Model()
+        r = Custom({'*args': ['*'], '**kwargs': {'a': '*', 'b': '*'}}).trace(m)
+        print(r.python_code(m))
+
+    def test_custom_proxies(self):
+        # this is another approach to above that simply enforces the shape at the creation
+        # of the proxy. It is simpler than above approach when you can return an aggregate
+        # object directly at creation.
+        def apply_shape(shape, obj):
+            if isinstance(shape, dict):
+                return {k: obj[k] for k, v in shape.items()}
+            if isinstance(shape, list):
+                return [obj[i] for i, _ in enumerate(shape)]
+
+        class Custom(Tracer):
+            def __init__(self, input_shape):
+                self.input_shape = input_shape
+                super().__init__()
+
+            def create_proxy(self, kind, target, args, kwargs, name=None):
+                r = super().create_proxy(kind, target, args, kwargs, name)
+                if kind == 'placeholder':
+                    r = apply_shape(self.input_shape[target], r)
+                return r
+
+        class Model(torch.nn.Module):
+            def what(self, c, a, b):
+                return c * a + b
+
+            def forward(self, *args, **kwargs):
+                return self.what(*args, **kwargs)
+
+        m = Model()
+        r = Custom({'*args': ['*'], '**kwargs': {'a': '*', 'b': '*'}}).trace(m)
+        print(r.python_code(m))
 
 if __name__ == '__main__':
     run_tests()
