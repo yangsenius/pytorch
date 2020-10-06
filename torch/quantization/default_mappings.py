@@ -23,6 +23,7 @@ DEFAULT_MODULE_MAPPING = {
     nn.Conv3d: nnq.Conv3d,
     nn.ConvTranspose1d: nnq.ConvTranspose1d,
     nn.ConvTranspose2d: nnq.ConvTranspose2d,
+    nn.BatchNorm1d: nnq.BatchNorm1d,
     nn.BatchNorm2d: nnq.BatchNorm2d,
     nn.BatchNorm3d: nnq.BatchNorm3d,
     nn.LayerNorm: nnq.LayerNorm,
