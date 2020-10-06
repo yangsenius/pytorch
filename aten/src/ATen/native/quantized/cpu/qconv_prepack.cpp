@@ -23,7 +23,10 @@ c10::intrusive_ptr<ConvPackedParamsBase<kSpatialDim>> PackedConvWeight<
         torch::List<int64_t> dilation,
         int64_t groups,
         bool transpose) {
-  TORCH_CHECK(!transpose, "FBGEMM doesn't support transpose packing yet!");
+  if (transpose) {
+    TORCH_WARN_ONCE("FBGEMM doesn't support transpose packing yet. ",
+                    "Falling back to slow mode!");
+  }
   TORCH_CHECK(
       weight.ndimension() == kSpatialDim + 2,
       "Weights are expected to have ",
@@ -55,6 +58,10 @@ c10::intrusive_ptr<ConvPackedParamsBase<kSpatialDim>> PackedConvWeight<
                                        : weight.size(1) * groups;
   const int output_channels = transpose ? weight.size(1) * groups
                                         : weight.size(0);
+  const int input_channels_per_group = input_channels / groups;
+  const int output_channels_per_group = output_channels / groups;
+  const int output_channels_element_num = transpose ? output_channels_per_group
+                                                    : output_channels;
   const int kernel_d = kSpatialDim == 2 ? 1 : weight.size(2);
   const int kernel_h = weight.size(kSpatialDim);
   const int kernel_w = weight.size(kSpatialDim + 1);
@@ -84,10 +91,10 @@ c10::intrusive_ptr<ConvPackedParamsBase<kSpatialDim>> PackedConvWeight<
   } else if (qtype == c10::kPerChannelAffine) {
     int64_t axis = weight.q_per_channel_axis();
     TORCH_CHECK(
-        axis == 0,
+        axis == int(transpose),  // 0 for non-transposed, 1 for transposed
         "Only per output channel quantization is supported for the weights");
-    zero_points.resize(output_channels);
-    for (int i = 0; i < output_channels; ++i) {
+    zero_points.resize(output_channels_element_num);
+    for (int i = 0; i < output_channels_element_num; ++i) {
       zero_points[i] = weight.q_per_channel_zero_points()[i].item<int32_t>();
     }
   } else {
@@ -106,8 +113,6 @@ c10::intrusive_ptr<ConvPackedParamsBase<kSpatialDim>> PackedConvWeight<
   // fbgemm::col_offsets_with_zero_pt_s8acc32_ref) please note that offsets
   // include the sum of columns as well as the scalar term weight_zero_point *
   // KDim
-  const int input_channels_per_group = input_channels / groups;
-  const int output_channels_per_group = output_channels / groups;
   const int inner_size =
       kernel_d * kernel_h * kernel_w * input_channels_per_group;
   for (int g = 0; g < groups; ++g) {
@@ -129,8 +134,8 @@ c10::intrusive_ptr<ConvPackedParamsBase<kSpatialDim>> PackedConvWeight<
   if (qtype == c10::kPerTensorAffine) {
     scales = {static_cast<float>(weight.q_scale())};
   } else if (qtype == c10::kPerChannelAffine) {
-    scales.resize(output_channels);
-    for (int i = 0; i < output_channels; ++i) {
+    scales.resize(output_channels_element_num);
+    for (int i = 0; i < output_channels_element_num; ++i) {
       scales[i] = weight.q_per_channel_scales()[i].item<float>();
     }
   }
@@ -320,7 +325,6 @@ class QConvPackWeightInt8 final {
     auto& ctx = at::globalContext();
 #ifdef USE_FBGEMM
     if (ctx.qEngine() == at::QEngine::FBGEMM) {
-      TORCH_CHECK(!transpose, "FBGEMM doesn't support transpose packing yet!");
       return PackedConvWeight<kSpatialDim>::prepack(
           weight, bias, stride, padding, output_padding, dilation, groups,
           transpose);
