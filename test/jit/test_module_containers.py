@@ -1,7 +1,7 @@
 import os
 import sys
 
-from typing import List
+from typing import Any, List, Dict
 from collections import OrderedDict
 import torch
 import torch.nn as nn
@@ -428,3 +428,51 @@ class TestModuleContainers(JitTestCase):
 
         m = MyModule()
         self.checkModule(m, [torch.randn(2, 2)])
+
+    def test_typed_module_dict(self):
+        """
+        Test that a type annotation can be provided for a ModuleDict that allows
+        non-static indexing.
+        """
+        @torch.jit.interface
+        class ModuleInterface(torch.nn.Module):
+            def forward(self, inp: Any) -> Any:
+                pass
+
+
+        class MyModule(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+
+            def forward(self, inp: Any) -> Any:
+                if isinstance(inp, torch.Tensor):
+                    return torch.max(inp, dim=0)
+
+                return inp
+
+
+        class Mod(torch.nn.Module):
+            __annotations__ = {"d": Dict[str, ModuleInterface]}
+
+            def __init__(self):
+                super().__init__()
+                self.d = torch.nn.ModuleDict({"module": MyModule()})
+
+            def forward(self, x: torch.Tensor, key: str) -> Any:
+                return self.d[key].forward(x)
+
+        m = Mod()
+        self.checkModule(m, (torch.randn(2, 2), "module"))
+
+
+        class ModDict(torch.nn.ModuleDict):
+            __annotations__ = {"self": Dict[str, ModuleInterface]}
+
+            def __init__(self):
+                super().__init__({"module": MyModule()})
+
+            def forward(self, x: torch.Tensor, key: str) -> Any:
+                return self[key].forward(x)
+
+        m = ModDict()
+        self.checkModule(m, (torch.randn(2, 2), "module"))

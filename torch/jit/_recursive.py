@@ -105,6 +105,10 @@ def infer_concrete_type_builder(nn_module, share_types=True):
 
     class_annotations = getattr(nn_module, '__annotations__', {})
 
+    if "self" in class_annotations:
+        self_type = torch.jit.annotations.ann_to_type(class_annotations["self"], _jit_internal.fake_range())
+        concrete_type_builder.set_hint(self_type)
+
     # try to infer the type from type annotation or from the object itself
     def infer_type(name, item):
         # The forward function from Module is special; never use this annotations; we
@@ -147,13 +151,16 @@ def infer_concrete_type_builder(nn_module, share_types=True):
             concrete_type_builder.add_attribute(name, attr_type, False, False)
             continue
         if attr_type is not None:
-            assert attr_type.is_interface_type()
-            # if the type can be inferred, it should be a module interface type
-            sub_concrete_type = torch._C.ConcreteModuleType.from_jit_type(attr_type)
+            if attr_type.is_interface_type():
+                sub_concrete_type = torch._C.ConcreteModuleType.from_jit_type(attr_type)
+                concrete_type_builder.add_module(name, sub_concrete_type, None)
+            else:
+                sub_concrete_type = get_module_concrete_type(item, share_types)
+                concrete_type_builder.add_module(name, sub_concrete_type, attr_type)
         else:
             # otherwise we get the concrete module type for item and add it to concrete_type
             sub_concrete_type = get_module_concrete_type(item, share_types)
-        concrete_type_builder.add_module(name, sub_concrete_type)
+            concrete_type_builder.add_module(name, sub_concrete_type, None)
 
         added_names.add(name)
 
