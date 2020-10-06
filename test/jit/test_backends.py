@@ -34,6 +34,13 @@ def to_test_backend_multi(module, method_compile_spec):
     return torch._C._jit_to_backend("test_backend", module, method_compile_spec)
 
 
+def to_test_backend_selective(module, method_compile_spec, submodules):
+    def _to_test_backend(module):
+        return to_test_backend(module, method_compile_spec)
+
+    return torch._C._jit_to_backend_selective("test_backend", module, _to_test_backend, submodules)
+
+
 class BasicModule(torch.nn.Module):
     """
     A simple Module used to test to_backend lowering machinery.
@@ -169,8 +176,23 @@ class NestedModuleTest(JitBackendTestCase):
         lowered_module = to_test_backend_multi(
             self.scripted_module, {"forward": {"": ""}}
         )
+
+        # First, script another instance of NestedModule with share_types=False so that it can be
+        # selectively lowered without modifying the type of self.scripted_module.
+        nested = torch.jit._recursive.create_script_module(
+            NestedModuleTest.NestedModule(BasicModule()),
+            torch.jit._recursive.infer_methods_to_compile,
+            share_types=False,
+        )
+        self.lowered_module = torch.jit._recursive.create_script_module(
+            NestedModuleTest.NestedModule(nested),
+            torch.jit._recursive.infer_methods_to_compile,
+            share_types=False,
+        )
+
         # self.lowered_module is a ScriptModule, but its submodule is a lowered module.
-        self.lowered_module = torch.jit.script(NestedModuleTest.NestedModule(lowered_module))
+        modules_to_lower = ["submodule.submodule"]
+        to_test_backend_selective(self.lowered_module, {"": ""}, modules_to_lower)
 
     def test_execution(self):
         # Test execution with backend against Python and JIT.
