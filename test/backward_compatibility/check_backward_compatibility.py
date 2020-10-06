@@ -113,8 +113,13 @@ allow_list = [
     ("aten::_amp_non_finite_check_and_unscale_", datetime.date(9999, 1, 1)),
     ("aten::choose_qparams_optimized", datetime.date(2020, 10, 5)),
     ("aten::smooth_l1_loss_backward", datetime.date(2020, 10, 15)),
+    ("aten::_foreach_sub_scalar_list", datetime.date(2020, 10, 10)),
+    ("aten::_foreach_add_scalar_list_", datetime.date(2020, 10, 10)),
+    ("aten::_foreach_add_scalar_list", datetime.date(2020, 10, 10)),
+    ("aten::_foreach_sub_scalar_list_", datetime.date(2020, 10, 10)),
+    ("aten::_foreach_div_scalar_list", datetime.date(2020, 10, 10)),
+    ("aten::_foreach_div_scalar_list_", datetime.date(2020, 10, 10)),
 ]
-
 
 def allow_listed(schema, allow_list):
     for item in allow_list:
