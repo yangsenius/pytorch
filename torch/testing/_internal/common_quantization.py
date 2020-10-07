@@ -657,10 +657,12 @@ class QuantizationTestCase(TestCase):
         if print_debug_info:
             print()
             print('quant type:', quant_type)
-            print('origianl graph module:', type(model))
+            print('origianl graph module type:', type(original))
+            print('origianl graph module:', original)
             self.printGraphModule(original)
             print()
-            print('quantized graph module:', type(qgraph_to_check))
+            print('quantized graph module type:', type(qgraph_to_check))
+            print('quantized graph module:', qgraph_to_check)
             self.printGraphModule(qgraph_to_check)
             print()
         self.checkGraphModuleNodes(
